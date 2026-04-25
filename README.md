@@ -4,6 +4,8 @@ Crop Easy is a fast native macOS app for cropping images with exact pixel contro
 
 It is built for simple everyday use: open or drop in an image, drag a crop box, see the live pixel size, type exact dimensions when needed, and export the result.
 
+This started as a small quality-of-life side project for quickly doing precise image crops without opening a heavier image editor.
+
 ## Features
 
 - Opens PNG, JPG/JPEG, WebP, TIFF, GIF, BMP, and other standard macOS image formats
@@ -128,12 +130,6 @@ There is currently no automated test suite. Use this manual checklist before sha
 - Packaged app output lives in `dist/`
 - `.build/` and `dist/` are intentionally ignored by Git
 
-## Repository Safety
+## License
 
-This project should not contain secrets, credentials, tokens, or private configuration files.
-
-Before committing, check that generated build folders and local app bundles are not staged:
-
-```bash
-git status --short
-```
+Crop Easy is released under the MIT License. See `LICENSE` for details.
