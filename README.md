@@ -15,6 +15,7 @@ This started as a small quality-of-life side project for quickly doing precise i
 - Shows live edge margins so you can compare how many pixels were removed from the left, right, top, and bottom
 - Lets you type exact width and height values
 - Can lock or unlock the current aspect ratio
+- Can optionally scale the selected crop into a typed export size
 - Exports cropped images as PNG or JPEG
 - Suggests export filenames that include the crop size, such as `photo-500x300_png.png`
 - Includes a custom app icon
@@ -43,8 +44,9 @@ You do not need a full Xcode project to build this app. It is a Swift Package ex
 7. Watch the dashed side guides to compare how many pixels are being removed from each edge.
 8. Type exact values into `W` and `H` if needed.
 9. Press Return or click out of the field to apply typed dimensions.
-10. Turn `Lock Aspect` on if you want to keep the current shape while resizing.
-11. Click `Export Crop...` or press `Cmd+E`.
+10. Turn `Scale Export` on if you want `W` and `H` to set the exported output size instead of the crop selection size.
+11. Turn `Lock Aspect` on if you want to keep the current shape while resizing.
+12. Click `Export Crop...` or press `Cmd+E`.
 
 ## Aspect Ratio In Plain English
 
@@ -56,6 +58,12 @@ Aspect ratio means the shape of the crop box.
 
 When `Lock Aspect` is on, changing width also changes height so the shape stays the same.
 When it is off, width and height can change independently.
+
+## Scaling Exports
+
+By default, `W` and `H` change the crop selection in source-image pixels. If you turn `Scale Export` on, `W` and `H` instead set the exported output size, and Crop Easy scales the selected crop into that size when saving.
+
+For example, select a 1000 x 1000 image area, turn `Scale Export` on, enter `128` by `128`, and export to create a 128 x 128 image.
 
 ## Run From Source
 
@@ -112,7 +120,8 @@ There is currently no automated test suite. Use this manual checklist before sha
 9. Type width and height values, then press Return or click away.
 10. Turn `Lock Aspect` on and confirm resizing keeps the same shape.
 11. Export as PNG and JPEG.
-12. Open the exported file in Preview and confirm the pixel dimensions match the crop label.
+12. Turn `Scale Export` on, enter a smaller output size, and export.
+13. Open the exported file in Preview and confirm the pixel dimensions match the crop label or scaled export size.
 
 ## Keyboard Shortcuts
 

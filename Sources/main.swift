@@ -88,6 +88,13 @@ struct ContentView: View {
                     editor.syncAspectLock(isLocked)
                 }
 
+            Toggle("Scale Export", isOn: $editor.scaleExport)
+                .toggleStyle(.switch)
+                .disabled(!editor.hasSelection)
+                .onChange(of: editor.scaleExport) { _, isEnabled in
+                    editor.syncScaleExport(isEnabled)
+                }
+
             Text("W")
                 .foregroundStyle(.secondary)
 
@@ -165,7 +172,7 @@ struct CropCanvasView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Color(nsColor: .controlBackgroundColor))
 
-                if let image = editor.loadedImage {
+                if let image = editor.loadedImage, !editor.scaleExport {
                     Image(nsImage: image.nsImage)
                         .resizable()
                         .interpolation(.high)
@@ -174,12 +181,21 @@ struct CropCanvasView: View {
                         .position(x: imageRect.midX, y: imageRect.midY)
                 }
 
+                if editor.scaleExport, let image = editor.loadedImage, let selectionRect {
+                    Image(nsImage: image.nsImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: selectionRect.width, height: selectionRect.height)
+                        .clipped()
+                        .position(x: selectionRect.midX, y: selectionRect.midY)
+                }
+
                 if let selectionRect {
                     CropOverlay(
                         imageRect: imageRect,
                         selectionRect: selectionRect,
                         label: editor.selectionLabel,
-                        margins: editor.selectionMargins
+                        margins: editor.scaleExport ? nil : editor.selectionMargins
                     )
                 }
             }
@@ -215,14 +231,16 @@ struct CropOverlay: View {
     let imageRect: CGRect
     let selectionRect: CGRect
     let label: String
-    let margins: CropMargins
+    let margins: CropMargins?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            CropMarginGuides(imageRect: imageRect, selectionRect: selectionRect, margins: margins)
+            if let margins {
+                CropMarginGuides(imageRect: imageRect, selectionRect: selectionRect, margins: margins)
+            }
 
             Rectangle()
-                .fill(Color.accentColor.opacity(0.18))
+                .fill(Color.accentColor.opacity(margins == nil ? 0 : 0.18))
                 .overlay {
                     Rectangle()
                         .strokeBorder(.white.opacity(0.95), lineWidth: 2)
@@ -419,10 +437,13 @@ final class CropEditorModel: ObservableObject {
     @Published var loadedImage: LoadedImage?
     @Published var cropRect: CGRect?
     @Published var aspectLocked = false
+    @Published var scaleExport = false
     @Published var widthText = ""
     @Published var heightText = ""
 
     private var lockedAspectRatio: CGFloat?
+    private var exportSize: CGSize?
+    private var userChangedSelection = false
     private let minimumSelectionSize: CGFloat = 1
 
     var hasLoadedImage: Bool { loadedImage != nil }
@@ -430,7 +451,15 @@ final class CropEditorModel: ObservableObject {
 
     var selectionLabel: String {
         guard let cropRect else { return "" }
-        return "\(Int(cropRect.width.rounded())) x \(Int(cropRect.height.rounded())) px"
+        let cropSize = "\(Int(cropRect.width.rounded())) x \(Int(cropRect.height.rounded())) px"
+        guard scaleExport else { return cropSize }
+
+        if let imageSize = loadedImage?.pixelSize {
+            let sourceSize = "\(Int(imageSize.width.rounded())) x \(Int(imageSize.height.rounded())) px"
+            return "\(sourceSize) -> \(cropSize)"
+        }
+
+        return cropSize
     }
 
     var selectionMargins: CropMargins {
@@ -467,6 +496,8 @@ final class CropEditorModel: ObservableObject {
             let loaded = try loadImage(from: url)
             loadedImage = loaded
             cropRect = defaultCropRect(for: loaded.pixelSize)
+            exportSize = cropRect?.size
+            userChangedSelection = false
             syncDimensionText()
             if aspectLocked {
                 lockedAspectRatio = cropRect.map { $0.width / max($0.height, 1) }
@@ -505,21 +536,22 @@ final class CropEditorModel: ObservableObject {
         guard
             let loadedImage,
             let cropRect,
-            let cropped = croppedImage(from: loadedImage.cgImage, cropRect: cropRect)
+            let sourceImage = scaleExport ? loadedImage.cgImage : croppedImage(from: loadedImage.cgImage, cropRect: cropRect),
+            let exportImage = exportImage(from: sourceImage)
         else {
             return
         }
 
         let panel = NSSavePanel()
-        let width = Int(cropRect.width.rounded())
-        let height = Int(cropRect.height.rounded())
+        let width = exportImage.width
+        let height = exportImage.height
         panel.nameFieldStringValue = "\(loadedImage.url.deletingPathExtension().lastPathComponent)-\(width)x\(height)_png.png"
         panel.allowedContentTypes = supportedSaveTypes
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            try write(cropped: cropped, to: url)
+            try write(cropped: exportImage, to: url)
         } catch {
             presentError(error.localizedDescription)
         }
@@ -537,6 +569,14 @@ final class CropEditorModel: ObservableObject {
         } else {
             lockedAspectRatio = nil
         }
+    }
+
+    func syncScaleExport(_ isEnabled: Bool) {
+        if isEnabled, !userChangedSelection, let imageSize = loadedImage?.pixelSize {
+            cropRect = CGRect(origin: .zero, size: imageSize)
+        }
+        exportSize = cropRect?.size
+        syncDimensionText()
     }
 
     func imageRect(in containerSize: CGSize) -> CGRect {
@@ -614,6 +654,8 @@ final class CropEditorModel: ObservableObject {
             cropRect = clamp(rectFrom(anchor: anchor, current: currentPixel, aspectRatio: lockedAspectRatio))
         }
 
+        userChangedSelection = true
+        exportSize = cropRect?.size
         syncDimensionText()
     }
 
@@ -679,10 +721,17 @@ final class CropEditorModel: ObservableObject {
         guard let imageSize = loadedImage?.pixelSize else { return nil }
 
         var clamped = rect.standardized
-        clamped.size.width = max(minimumSelectionSize, min(clamped.width, imageSize.width))
-        clamped.size.height = max(minimumSelectionSize, min(clamped.height, imageSize.height))
-        clamped.origin.x = min(max(0, clamped.origin.x), imageSize.width - clamped.width)
-        clamped.origin.y = min(max(0, clamped.origin.y), imageSize.height - clamped.height)
+        if scaleExport {
+            clamped.size.width = max(minimumSelectionSize, clamped.width)
+            clamped.size.height = max(minimumSelectionSize, clamped.height)
+            clamped.origin.x = max(0, clamped.origin.x)
+            clamped.origin.y = max(0, clamped.origin.y)
+        } else {
+            clamped.size.width = max(minimumSelectionSize, min(clamped.width, imageSize.width))
+            clamped.size.height = max(minimumSelectionSize, min(clamped.height, imageSize.height))
+            clamped.origin.x = min(max(0, clamped.origin.x), imageSize.width - clamped.width)
+            clamped.origin.y = min(max(0, clamped.origin.y), imageSize.height - clamped.height)
+        }
 
         clamped.origin.x = clamped.origin.x.rounded()
         clamped.origin.y = clamped.origin.y.rounded()
@@ -717,15 +766,22 @@ final class CropEditorModel: ObservableObject {
             }
         }
 
-        newWidth = min(max(newWidth.rounded(), minimumSelectionSize), imageSize.width - cropRect.minX)
-        newHeight = min(max(newHeight.rounded(), minimumSelectionSize), imageSize.height - cropRect.minY)
+        if scaleExport {
+            newWidth = max(newWidth.rounded(), minimumSelectionSize)
+            newHeight = max(newHeight.rounded(), minimumSelectionSize)
+        } else {
+            newWidth = min(max(newWidth.rounded(), minimumSelectionSize), imageSize.width - cropRect.minX)
+            newHeight = min(max(newHeight.rounded(), minimumSelectionSize), imageSize.height - cropRect.minY)
+        }
 
-        if aspectLocked, let ratio = lockedAspectRatio, ratio > 0 {
+        if !scaleExport, aspectLocked, let ratio = lockedAspectRatio, ratio > 0 {
             newHeight = min(max((newWidth / ratio).rounded(), minimumSelectionSize), imageSize.height - cropRect.minY)
             newWidth = min(max((newHeight * ratio).rounded(), minimumSelectionSize), imageSize.width - cropRect.minX)
         }
 
         self.cropRect = CGRect(x: cropRect.minX, y: cropRect.minY, width: newWidth, height: newHeight)
+        userChangedSelection = true
+        exportSize = self.cropRect?.size
         syncDimensionText()
     }
 
@@ -803,6 +859,35 @@ final class CropEditorModel: ObservableObject {
         ).integral
 
         return cgImage.cropping(to: adjusted)
+    }
+
+    private func exportImage(from cgImage: CGImage) -> CGImage? {
+        guard scaleExport, let exportSize = exportSize ?? cropRect?.size else { return cgImage }
+
+        let targetWidth = Int(exportSize.width.rounded())
+        let targetHeight = Int(exportSize.height.rounded())
+        guard targetWidth > 0, targetHeight > 0 else { return nil }
+
+        if targetWidth == cgImage.width, targetHeight == cgImage.height {
+            return cgImage
+        }
+
+        let colorSpace = cgImage.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: targetWidth,
+            height: targetHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+        return context.makeImage()
     }
 
     private func write(cropped cgImage: CGImage, to url: URL) throws {
