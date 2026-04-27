@@ -44,7 +44,7 @@ You do not need a full Xcode project to build this app. It is a Swift Package ex
 7. Watch the dashed side guides to compare how many pixels are being removed from each edge.
 8. Type exact values into `W` and `H` if needed.
 9. Press Return or click out of the field to apply typed dimensions.
-10. Turn `Scale Export` on if you want `W` and `H` to set the exported output size instead of the crop selection size.
+10. Turn `Scale Export` on if you want the full image scaled into the selected output box.
 11. Turn `Lock Aspect` on if you want to keep the current shape while resizing.
 12. Click `Export Crop...` or press `Cmd+E`.
 
@@ -61,9 +61,23 @@ When it is off, width and height can change independently.
 
 ## Scaling Exports
 
-By default, `W` and `H` change the crop selection in source-image pixels. If you turn `Scale Export` on, `W` and `H` instead set the exported output size, and Crop Easy scales the selected crop into that size when saving.
+By default, `W` and `H` change the crop selection in source-image pixels. If you turn `Scale Export` on, the selection becomes an output canvas, and Crop Easy scales the full image into that canvas when saving.
 
-For example, select a 1000 x 1000 image area, turn `Scale Export` on, enter `128` by `128`, and export to create a 128 x 128 image.
+For example, open a 1000 x 1000 image, turn `Scale Export` on, enter `128` by `128`, and export to create a 128 x 128 scaled image.
+
+## Examples
+
+### Precise Crop With Aspect Lock
+
+![Precise crop with aspect lock](Assets/images/aspect-locked-crop.png)
+
+### Scale An Image Into A New Size
+
+![Scale export preview](Assets/images/scaled-export-preview.png)
+
+### Normal Centered Crop
+
+![Normal centered crop with margin guides](Assets/images/centered-crop-margins.png)
 
 ## Run From Source
 
